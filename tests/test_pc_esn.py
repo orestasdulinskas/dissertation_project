@@ -1,10 +1,7 @@
 import unittest
 import torch
-import numpy as np
-import sys
-sys.path.append('./pc_esn')
 
-import model
+import pc_esn_model
 
 class TestPCESN(unittest.TestCase):
     """
@@ -22,7 +19,7 @@ class TestPCESN(unittest.TestCase):
         self.ghl_eta_initial = 1e-3
         self.ghl_decay_steps = 100
         
-        self.model = model.PC_ESN(
+        self.model = pc_esn_model.PC_ESN(
             n_inputs=self.n_inputs,
             n_outputs=self.n_outputs,
             n_reservoir=self.n_reservoir,
