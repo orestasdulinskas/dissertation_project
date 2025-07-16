@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+import sys
+sys.path.append('models')
 
 import lstm_model
 

@@ -1,5 +1,7 @@
 import unittest
 import torch
+import sys
+sys.path.append('models')
 
 import pc_esn_model
 
@@ -118,19 +120,31 @@ class TestPCESN(unittest.TestCase):
             self.assertNotEqual(self.model.beta[i].item(), beta_before[i].item(), f"beta[{i}] should be updated.")
     
     def test_05_train_method(self):
-        """Test the full training loop."""
+        """Test the full training loop, including post-warm-up updates."""
         print("Running Test: Full Train Method")
+        
+        # --- Create a dataset large enough to trigger the output weight update ---
+        warm_up_steps = 100  # Match the value in the train method
+        train_steps = warm_up_steps + 10 # We need to train for more than warm_up_steps
+        X_train_data = torch.randn(train_steps, self.n_inputs, device=self.device)
+        y_train_data = torch.randn(train_steps, self.n_outputs, device=self.device)
+
+        # --- Store initial weights ---
         w_in_before = self.model.W_in.clone()
         w_out_before = self.model.W_out.clone()
         
-        self.model.train(self.X_data, self.y_data)
+        # --- Train the model ---
+        self.model.train(X_train_data, y_train_data)
         
-        # Check that weights have been updated after training on a batch
+        # --- Assertions ---
+        # W_in is updated from the very first step, so it should change.
         self.assertFalse(torch.equal(w_in_before, self.model.W_in), "W_in should be updated after training.")
+        
+        # W_out is only updated after warm_up_steps, so it should now be different.
         self.assertFalse(torch.equal(w_out_before, self.model.W_out), "W_out should be updated after training.")
         
-        # Check that the GHL learning rate has decayed
-        expected_eta = self.ghl_eta_initial / (1 + (self.batch_size - 1) / self.ghl_decay_steps)
+        # Check that the GHL learning rate has decayed correctly.
+        expected_eta = self.ghl_eta_initial / (1 + (train_steps - 1) / self.ghl_decay_steps)
         self.assertAlmostEqual(self.model.ghl_eta, expected_eta, msg="ghl_eta should decay over time.")
 
     def test_06_predict_step_by_step(self):

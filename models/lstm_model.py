@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
+from torch.cuda.amp import GradScaler, autocast
 
 # Define the target device
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -40,19 +41,23 @@ class LSTMModel(nn.Module):
         return predictions
     
 # --- 4. Training and Prediction Functions ---
-def train_lstm_model(model, data_loader, learning_rate, epochs=50):
-    """Function to train the LSTM model."""
+def train_lstm_model(model, data_loader, learning_rate, epochs=100):
     criterion = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=50)
+    scaler = GradScaler()
     model.train()
     for epoch in range(epochs):
         for seq, labels in data_loader:
             seq, labels = seq.to(device), labels.to(device)
             optimizer.zero_grad()
-            y_pred = model(seq)
-            loss = criterion(y_pred, labels)
-            loss.backward()
-            optimizer.step()
+            with autocast():
+                y_pred = model(seq)
+                loss = criterion(y_pred, labels)
+                scheduler.step(loss.item())
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
     return model
 
 def predict_step_by_step_lstm(model, X_test_np, y_test_np, seq_length):
