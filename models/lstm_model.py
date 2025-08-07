@@ -15,14 +15,14 @@ def create_sequences(X_data, y_data, seq_length):
     X_seq, y_seq = [], []
     for i in range(len(X_data) - seq_length):
         X_seq.append(X_data[i : (i + seq_length)])
-        y_seq.append(y_data[i + seq_length -1]) # Target is the state at the end of the sequence
+        y_seq.append(y_data[i + seq_length -1])
     return np.array(X_seq), np.array(y_seq)
 
 class LSTMModel(nn.Module):
     """
     A standard LSTM network for time-series prediction.
     """
-    def __init__(self, input_size, hidden_size, num_layers, output_size, dropout_rate):
+    def __init__(self, input_size, hidden_size, num_layers, output_size, dropout_rate=None):
         super(LSTMModel, self).__init__()
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -40,24 +40,27 @@ class LSTMModel(nn.Module):
         predictions = self.linear(last_time_step_out)
         return predictions
     
-# --- 4. Training and Prediction Functions ---
 def train_lstm_model(model, data_loader, learning_rate, epochs=100):
     criterion = nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=50)
-    scaler = GradScaler()
+    scaler = GradScaler('cuda')
     model.train()
     for epoch in range(epochs):
+        epoch_loss = 0.0
         for seq, labels in data_loader:
             seq, labels = seq.to(device), labels.to(device)
             optimizer.zero_grad()
-            with autocast():
+            with autocast('cuda'):
                 y_pred = model(seq)
                 loss = criterion(y_pred, labels)
-                scheduler.step(loss.item())
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
+            epoch_loss += loss.item()
+
+        avg_epoch_loss = epoch_loss / len(data_loader)
+        scheduler.step(avg_epoch_loss)
     return model
 
 def predict_step_by_step_lstm(model, X_test_np, y_test_np, seq_length):
@@ -67,20 +70,20 @@ def predict_step_by_step_lstm(model, X_test_np, y_test_np, seq_length):
     model.eval()
     n_samples = X_test_np.shape[0]
     n_outputs = y_test_np.shape[1]
-    
+
     # Create input sequences from the ground truth test data
     X_seq_np, _ = create_sequences(X_test_np, y_test_np, seq_length)
     X_seq_t = torch.from_numpy(X_seq_np).float().to(device)
-    
+
     predictions_seq = np.zeros((X_seq_np.shape[0], n_outputs))
 
     with torch.no_grad():
         predictions_seq = model(X_seq_t).cpu().numpy()
-            
+
     # Pad the start of the predictions to match the original trajectory length
     padded_predictions = np.zeros((n_samples, n_outputs))
     padded_predictions[seq_length:] = predictions_seq # Shift by seq_length
-    
+
     return padded_predictions
 
 def predict_full_trajectory_lstm(model, X_data, seq_length):

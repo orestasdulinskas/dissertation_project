@@ -1,5 +1,5 @@
-import numpy as np
 import torch
+import numpy as np
 
 def nMSE(y_true, y_pred):
     error = np.mean((y_true - y_pred)**2, axis=0)
@@ -15,7 +15,7 @@ def get_transformation_matrix(theta, d, a, alpha):
     s_theta = np.sin(theta)
     c_alpha = np.cos(alpha)
     s_alpha = np.sin(alpha)
-    
+
     A = np.array([
         [c_theta, -s_theta * c_alpha,  s_theta * s_alpha, a * c_theta],
         [s_theta,  c_theta * c_alpha, -c_theta * s_alpha, a * s_theta],
@@ -26,18 +26,18 @@ def get_transformation_matrix(theta, d, a, alpha):
 
 def calculate_op_space_error(y_true, y_pred):
     """
-    This function was already correct. It calculates the mean Euclidean error 
+    This function was already correct. It calculates the mean Euclidean error
     for the full trajectory.
     """
     pred_joint_positions = y_pred[:, :7]
-    
+
     # This correctly applies the FK function to each time step
     true_xyz_coords = np.apply_along_axis(forward_kinematics, 1, y_true[:, :7])
     pred_xyz_coords = np.apply_along_axis(forward_kinematics, 1, pred_joint_positions)
-    
+
     # Calculate the Euclidean distance for each time step
     errors = np.linalg.norm(true_xyz_coords - pred_xyz_coords, axis=1)
-    
+
     # Return the average error over the whole trajectory
     return np.mean(errors)
 
@@ -53,15 +53,29 @@ def forward_kinematics(joint_positions):
     # Parameters are [alpha_{i-1}, a_{i-1}, d_i, theta_i]
     # 'a' is link length, 'd' is link offset, 'alpha' is link twist.
     dh_params = np.array([
-        # alpha_im1, a_im1,   d_i,   theta_i
-        [0,           0,     0.310,  joint_positions[0]],
-        [-np.pi/2,    0,     0,      joint_positions[1]],
-        [np.pi/2,     0,     0.400,  joint_positions[2]],
-        [np.pi/2,     0,     0,      joint_positions[3]],
-        [-np.pi/2,    0,     0.390,  joint_positions[4]],
-        [-np.pi/2,    0,     0,      joint_positions[5]],
-        [np.pi/2,     0,     0.078,  joint_positions[6]]
+        # α_{i−1},  a_{i−1},  d_i,     θ_i
+        [  0,         0,      0.3105,  joint_positions[0]               ],
+        [ -np.pi/2,   0,      0.0,     joint_positions[1] - np.pi/2     ],
+        [  np.pi/2,   0,      0.4005,  joint_positions[2]               ],
+        [  np.pi/2,   0,      0.0,     joint_positions[3] + np.pi/2     ],
+        [ -np.pi/2,   0,      0.3900,  joint_positions[4]               ],
+        [ -np.pi/2,   0,      0.0,     joint_positions[5] - np.pi/2     ],
+        [  np.pi/2,   0,      0.0780,  joint_positions[6]               ]
     ])
+
+    # Standard Denavit-Hartenberg parameters for Baxter.
+    """dh_params = np.array([
+        # α_{i−1},    a_{i−1},    d_i,        θ_i
+        [  0,           0,          0.27035,    joint_positions[0]               ],
+        [ -np.pi/2,     0.069,      0.0,        joint_positions[1] + np.pi/2     ],
+        [  np.pi/2,     0,          0.36435,    joint_positions[2]               ],
+        [ -np.pi/2,     0.069,      0.0,        joint_positions[3]               ],
+        [  np.pi/2,     0.01,       0.37429,    joint_positions[4]               ],
+        [ -np.pi/2,     0,          0.0,        joint_positions[5]               ],
+        [  0,           0,          0.229525,   joint_positions[6]               ]
+    ])"""
+    
+
 
     T = np.eye(4) # Initialize the transformation matrix
     for i in range(7): # Iterate through each of the 7 joints
@@ -72,10 +86,10 @@ def forward_kinematics(joint_positions):
 
         # Calculate the transformation matrix for the current joint
         A_i = get_transformation_matrix(theta_i, d_i, a_im1, alpha_im1)
-        
+
         # Update the overall transformation matrix
         T = T @ A_i
-        
+
     # The XYZ position of the end-effector is in the last column
     return T[:3, 3]
 
@@ -87,6 +101,6 @@ def euclidean_error(y_true, y_pred):
     # Use np.apply_along_axis to call forward_kinematics for each row (time step)
     ee_pos_true = np.apply_along_axis(forward_kinematics, 1, y_true[:, :7])
     ee_pos_pred = np.apply_along_axis(forward_kinematics, 1, y_pred[:, :7])
-    
+
     # Calculate the norm (distance) between the true and predicted XYZ for each time step
     return np.linalg.norm(ee_pos_true - ee_pos_pred, axis=1)
